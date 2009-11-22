@@ -1,3 +1,5 @@
+The blog entry: http://vps.eldslott.org/wp/udoprog/entry/2009/11/unicode-utf-8-and-coroutines/
+
 This is an UTF-8 decoder, for a description of what this is, see wikipedia.
 
 This attempts to be 100% compliant to RFC-3629 in all aspects regarding decoding of byte sequences.
