@@ -1,8 +1,8 @@
 /**
- * This code is release into the public domain.
- * If you find it useful i would like to be given a notice as the original author.
- * Please contact me at: johnjohn.tedro@gmail.com
- */
+* This code is release into the public domain.
+* If you find it useful i would like to be given a notice as the original author.
+* Please contact me at: johnjohn.tedro@gmail.com
+*/
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
@@ -12,62 +12,74 @@ typedef struct utf8_decoder_t {
   unsigned long state;
   int pos;
 } utf8_decoder_t;
- 
 #define NUL 0x0
 #define UNK -0x1
  
-// use only the first six bits of a byte to signify value.
-// first argument singifies which byte in the series and by significance.
-#define trail_byte(i, b) (((b) & 0x3f) << (6 * (i)))
+// mask out the last six bits of an octet and use as value.
+// @i: the significance of the bits as a multiple of six
+// @b: the actual octet
+#define trail_octet(i, b) (((b) & 0x3f) << (6 * (i)))
  
-// index the buffer using a specific stateholder.
+// Index the buffer using a specific stateholder.
+// @u: the utf8_decoder_t struct
+// @b: the write buffer
 #define current(u, b) *((u)->pos + (b))
  
-// thread-safe coroutine statements, no static variables.
-#define COBegin(u)      switch(u->state) { case 0:
-#define COReturn(u, v)    u->state = __LINE__;\
-                          return (v);\
-                        case __LINE__:
-#define COEnd           }
+// thread-safe coroutine statements
+// uses a struct on the local heap space (specifically utf8_decoder_t)
+#define COBegin(u) switch(u->state) { case 0:
+#define COReturn(u, v) u->state = __LINE__;\
+return (v);\
+case __LINE__:
+#define COEnd }
  
-int utf8_decoder(utf8_decoder_t *u, long *buffer, uint8_t c) {
+/**
+ * @u: A pointer to the utf8_decoder_t struct
+ * @buffer: A write buffer with a minimum length of two
+ * @c: The next octet to use in the decoding stream.
+ */
+int utf8_decoder(u, buffer, c)
+  utf8_decoder_t  *u;
+  uint32_t        *buffer;
+  uint8_t         c;
+{
   COBegin(u);
   while (1) {
     if ((c >> 7) == 0x0) {
       current(u, buffer) = c;
       u->i = 0;
     }
-    // first byte says length two
+    // first octet says length two
     // that is 110xxxxx
     else if ((c >> 5) == (0x3 << 1)) {
       u->i = 1;
-      current(u, buffer) = trail_byte(u->i, c & 0x1f);
+      current(u, buffer) = trail_octet(u->i, c & 0x1f);
     }
-    // first byte says length three
+    // first octet says length three
     // that is 1110xxxx
     else if ((c >> 4) == (0x7 << 1)) {
       u->i = 2;
-      current(u, buffer) = trail_byte(u->i, c & 0x0f);
+      current(u, buffer) = trail_octet(u->i, c & 0x0f);
     }
-    // first byte says length four
+    // first octet says length four
     // that is 11110xxx
     else if ((c >> 3) == (0x0f << 1)) {
       u->i = 3;
-      current(u, buffer) = trail_byte(u->i, c & 0x07);
+      current(u, buffer) = trail_octet(u->i, c & 0x07);
     }
-    // first byte says length five
+    // first octet says length five
     // that is 111110xx
     else if ((c >> 2) == (0x1f << 1)) {
       u->i = 4;
-      current(u, buffer) = trail_byte(u->i, c & 0x03);
+      current(u, buffer) = trail_octet(u->i, c & 0x03);
     }
-    // first byte says length six
+    // first octet says length six
     // that is 1111110x
     else if ((c >> 1) == (0x3f << 1)) {
       u->i = 5;
-      current(u, buffer) = trail_byte(u->i, c & 0x01);
+      current(u, buffer) = trail_octet(u->i, c & 0x01);
     }
-    // first byte does not signify unicode.
+    // first octet does not signify unicode.
     else {
       goto error;
     }
@@ -76,15 +88,16 @@ int utf8_decoder(utf8_decoder_t *u, long *buffer, uint8_t c) {
  
     while (u->i-- > 0) {
       COReturn(u, 1);
-      // decode failure part mismatch trailing byte is not 10xxxxxx.
+      // decode failure part mismatch trailing octet is not 10xxxxxx.
       // where the xxxxxx parts signify payload.
       if ((c >> 6) != (0x1 << 1)) { goto reject; }
+      
       // rfc states that no unicode character is longer than this.
       // code can obviously not be less than 0 either.
-      //if (u->code > 0x10ffff || u->code < 0x0)  { goto error; }
+      //if (u->code > 0x10ffff || u->code < 0x0) { goto error; }
  
       // next part is an actual unicode part.
-      current(u, buffer) += trail_byte(u->i, c);
+      current(u, buffer) += trail_octet(u->i, c);
     }
  
     // check for overly long sequence.
@@ -121,10 +134,9 @@ int main() {
   utf8_decoder_t u = {.state = 0};
  
   // two character loockahead buffer.
-  long buffer[2];
- 
+  uint32_t buffer[2];
+  uint32_t c;
   int i;
-  long c;
  
   while (!feof(stdin)) {
     utf8_decoder(&u, buffer, getc(stdin));
@@ -138,6 +150,7 @@ int main() {
     // read the number of characters we have.
     for (i = 0; i < u.pos; i++) {
       c = buffer[i];
+      
       if (c == UNK) {
         printf("<?>");
         continue;
@@ -158,7 +171,6 @@ int main() {
  
     u.pos = 0;
   }
- 
  
   return 0;
 }
